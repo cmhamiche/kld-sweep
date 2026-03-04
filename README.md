@@ -108,11 +108,3 @@ A sample dataset is not included in this repository due to size — see [dataset
 ## Troubleshooting
 
 See [FAQ.md](FAQ.md) for a full list of error codes and fixes.
-
----
-
-## Example results
-
-See the accompanying HuggingFace post for an example sweep on Qwen3.5-27B across 18 community GGUF quants.
-
-Repository: [github.com/cmhamiche/kld-sweep](https://github.com/cmhamiche/kld-sweep)
