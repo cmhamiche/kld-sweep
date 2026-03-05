@@ -8,7 +8,7 @@ Usage:
                         --dataset /path/to/dataset.txt \
                         --output /path/to/output/ \
                         [--logits /path/to/logits.bin] \
-                        [--args "-t 7 -c 4096 -ngl 36"] \
+                        [--args "-t 7 -c 512 -ngl 999 -cmoe"] \
                         [--model-name MyModel] \
                         [--dataset2 /path/to/second_dataset.txt] \
                         [--logits2 /path/to/logits2.bin] \
