@@ -87,11 +87,11 @@ python kld_sweep.py ^
 
 Any plain UTF-8 text file works. A minimum of ~50,000 characters is recommended for meaningful results — more chunks means tighter confidence intervals.
 
-As a rule of thumb: 25+ chunks at `-c 4096` gives credible separation between quants. 72+ chunks is better for tight comparisons.
+As a rule of thumb: 25+ chunks at `-c 512` gives credible separation between quants. 100+ chunks is better for tight comparisons.
 
 For instruct models, wrapping the dataset in the model's chat template (e.g. ChatML) gives more representative results than plain text, since the model's distribution is calibrated to that format.
 
-A sample dataset is not included in this repository due to size — see [datasets/README.md](datasets/README.md) for recommendations.
+A sample dataset is not included in this repository — see [datasets/README.md](datasets/README.md) for recommendations.
 
 ---
 
@@ -100,7 +100,7 @@ A sample dataset is not included in this repository due to size — see [dataset
 - The BF16/F16 model can be in the same directory as the quants — it will be detected and excluded automatically.
 - Split-shard BF16 models are supported — point `--bf16` to the first shard only.
 - If logits generation is interrupted (Ctrl+C, crash), the partial file is automatically detected on the next run and the script prompts you to regenerate.
-- If you change `--dataset` between runs, the script detects the mismatch and asks whether to regenerate the logits.
+- If you change `--dataset` between runs, the script should detects the mismatch and asks whether to regenerate the logits.
 - Results from ERROR entries (crashed or unparseable runs) are retried automatically on the next run.
 
 ---
