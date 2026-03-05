@@ -36,7 +36,7 @@ python kld_sweep.py \
   --dataset /path/to/dataset.txt \
   --output /path/to/output/ \
   --model-name MyModel \
-  --args="-t 7 -c 4096 -ngl 99"
+  --args="-t 7 -c 512 -ngl 99"
 ```
 
 **Windows:**
@@ -48,7 +48,7 @@ python kld_sweep.py ^
   --dataset C:\datasets\mydataset.txt ^
   --output  C:\results\ ^
   --model-name MyModel ^
-  --args="-t 7 -c 4096 -ngl 36"
+  --args="-t 7 -c 512 -ngl 36"
 ```
 
 > **Note:** Always use `--args="-t 7 ..."` with the `=` sign — the value contains spaces and will cause an error without it.
