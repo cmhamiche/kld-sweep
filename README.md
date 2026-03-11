@@ -91,7 +91,7 @@ As a rule of thumb: 25+ chunks at `-c 512` gives credible separation between qua
 
 For instruct models, wrapping the dataset in the model's chat template (e.g. ChatML) gives more representative results than plain text, since the model's distribution is calibrated to that format.
 
-A sample dataset is not included in this repository — see [datasets/README.md](datasets/README.md) for recommendations.
+A sample dataset is not included in this repository — see [[datasets/README.md](datasets/README.md)](https://github.com/cmhamiche/kld-sweep/blob/main/datasets_README.md) for recommendations.
 
 ---
 
