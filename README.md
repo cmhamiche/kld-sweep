@@ -6,7 +6,7 @@ A cross-platform Python script to evaluate and compare GGUF quantizations of a m
 
 ## What it does
 
-For each `.gguf` file in a directory, the script runs `llama-perplexity` and measures how much the quantized model's output distribution diverges from the full precision baseline. Results are saved to a CSV and two plots are generated — KLD vs size and PPL vs size. An efficiency ranking (Euclidean distance from the ideal 0,0 point) is also computed.
+For each `.gguf` file in a directory, the script runs `llama-perplexity` and measures how much the quantized model's output distribution diverges from the full precision baseline. Results are saved to a CSV and two plots are generated, KLD vs size and PPL vs size. An efficiency ranking (Euclidean distance from the ideal 0,0 point) is also computed.
 
 Logits are generated once from the BF16/F16 model and reused for all quants. The sweep resumes automatically if interrupted — already completed entries in the CSV are skipped.
 
