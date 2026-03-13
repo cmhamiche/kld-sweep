@@ -1,4 +1,4 @@
-# kld_sweep.py — FAQ & Troubleshooting
+# FAQ & Troubleshooting
 
 ---
 
@@ -184,4 +184,4 @@ Use mainline llama.cpp releases from https://github.com/ggerganov/llama.cpp/rele
 The output parsing regex targets mainline format. ik_llama and other forks may produce different output — if parsing fails (E06), check the raw output format and open an issue.
 
 **What context size and -ngl should I use?**
-A good starting point is `-c 4096 -ngl 99` (full GPU offload). If your VRAM is limited, lower `-ngl`. For BF16 logits generation you will likely need a much lower `-ngl` (e.g. `-ngl 11`) since the full model needs to fit in RAM+VRAM combined.
+A good starting point is `-c 512 -ngl 99` (full GPU offload). If your VRAM is limited, lower `-ngl`. For BF16 logits generation you will likely need a much lower `-ngl` (e.g. `-ngl 11`) since the full model needs to fit in RAM+VRAM combined.
