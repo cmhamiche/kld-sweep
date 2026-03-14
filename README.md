@@ -107,7 +107,7 @@ For instruct models, wrapping the dataset in the model's chat template (e.g. Cha
 
 A sample dataset is not included in this repository — see [datasets_README.md](https://github.com/cmhamiche/kld-sweep/blob/main/datasets_README.md) for recommendations.
 
-To build a custom dataset tailored to specific languages, tasks, or quantization use cases, see **[kld-sweep-dataset-builder](https://github.com/cmhamiche/kld-sweep-dataset-builder)** — a companion tool that assembles and chat-wraps evaluation and imatrix calibration datasets from the eaddario/imatrix-calibration corpus.
+To build a custom dataset tailored to specific languages, tasks, or quantization use cases, see **[kld-sweep-dataset](https://github.com/cmhamiche/kld-sweep-dataset)** — a companion tool that assembles and optionally chat-wraps evaluation and imatrix calibration datasets from the [eaddario/imatrix-calibration](https://huggingface.co/datasets/eaddario/imatrix-calibration) corpus.
 
 ---
 

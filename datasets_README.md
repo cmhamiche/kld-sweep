@@ -4,7 +4,7 @@ Large text files are not committed to this repository. This directory is a place
 
 ## Building a custom dataset
 
-The recommended way to build an evaluation or imatrix calibration dataset is **[kld-sweep-dataset-builder](https://github.com/cmhamiche/kld-sweep-dataset-builder)**, a companion tool that:
+The recommended way to build an evaluation or imatrix calibration dataset is **[kld-sweep-dataset](https://github.com/cmhamiche/kld-sweep-dataset)**, a companion tool that:
 
 - Sources data from [eaddario/imatrix-calibration](https://huggingface.co/datasets/eaddario/imatrix-calibration) (tools / math / code / multilingual text)
 - Downloads only the files you need on demand
