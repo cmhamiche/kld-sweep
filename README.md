@@ -1,6 +1,6 @@
 # kld-sweep
 
-A cross-platform Python script to evaluate and compare GGUF quantizations of a model against its BF16/F16 baseline using KL Divergence and Perplexity, powered by [llama.cpp](https://github.com/ggerganov/llama.cpp).
+A cross-platform Python script to evaluate and compare GGUF quantizations of a model against a full-precision baseline (BF16, F16, or Q8_0) using KL Divergence and Perplexity, powered by [llama.cpp](https://github.com/ggerganov/llama.cpp).
 
 ---
 
@@ -30,11 +30,11 @@ A llama.cpp build with `llama-perplexity` — download the latest release for yo
 
 ```
 python kld_sweep.py \
-  --exe    /path/to/llama-perplexity \
-  --bf16   /path/to/model-BF16.gguf \
-  --quants /path/to/quants/ \
-  --dataset /path/to/dataset.txt \
-  --output /path/to/output/ \
+  --exe      /path/to/llama-perplexity \
+  --baseline /path/to/model-BF16.gguf \
+  --quants   /path/to/quants/ \
+  --dataset  /path/to/dataset.txt \
+  --output   /path/to/output/ \
   --model-name MyModel \
   --args="-t 7 -c 512 -ngl 99"
 ```
@@ -42,13 +42,26 @@ python kld_sweep.py \
 **Windows:**
 ```
 python kld_sweep.py ^
-  --exe    C:\llamacpp\llama-perplexity.exe ^
-  --bf16   C:\models\MyModel-BF16.gguf ^
-  --quants C:\models\quants\ ^
-  --dataset C:\datasets\mydataset.txt ^
-  --output  C:\results\ ^
+  --exe      C:\llamacpp\llama-perplexity.exe ^
+  --baseline C:\models\MyModel-BF16.gguf ^
+  --quants   C:\models\quants\ ^
+  --dataset  C:\datasets\mydataset.txt ^
+  --output   C:\results\ ^
   --model-name MyModel ^
   --args="-t 7 -c 512 -ngl 36"
+```
+
+**When the baseline doesn't fit in VRAM with the same settings as the quants:**
+```
+python kld_sweep.py ^
+  --exe           C:\llamacpp\llama-perplexity.exe ^
+  --baseline      C:\models\MyModel-BF16.gguf ^
+  --quants        C:\models\quants\ ^
+  --dataset       C:\datasets\mydataset.txt ^
+  --output        C:\results\ ^
+  --model-name    MyModel ^
+  --args="-t 7 -c 512 -ngl 99" ^
+  --args-baseline="-t 7 -c 512 -ngl 20"
 ```
 
 > **Note:** Always use `--args="-t 7 ..."` with the `=` sign — the value contains spaces and will cause an error without it.
@@ -60,13 +73,14 @@ python kld_sweep.py ^
 | Argument | Required | Description |
 |---|---|---|
 | `--exe` | Yes | Path to `llama-perplexity` binary |
-| `--bf16` | Yes | Path to BF16/F16 GGUF (first shard if split) |
+| `--baseline` | Yes | Path to baseline GGUF — BF16, F16, or Q8_0 (first shard if split) |
 | `--quants` | Yes | Directory containing quant GGUFs |
 | `--dataset` | Yes | Plain text evaluation dataset |
 | `--output` | Yes | Output directory for CSV, plots, and logits |
 | `--model-name` | No | Short name used in filenames and plot titles |
 | `--logits` | No | Path to existing logits file — auto-generated in `--output` if not provided, reused on resume |
-| `--args` | No | Extra flags for llama-perplexity (default: `-t 7 -c 4096 -ngl 99`) |
+| `--args` | No | Extra flags for llama-perplexity for quant evaluation (default: `-t 7 -c 512 -ngl 99`) |
+| `--args-baseline` | No | Extra flags for llama-perplexity for baseline logits generation only — falls back to `--args` if not provided. Use when the baseline needs different VRAM settings than the quants. |
 
 ---
 
@@ -97,8 +111,8 @@ A sample dataset is not included in this repository — see [datasets/README.md]
 
 ## Notes
 
-- The BF16/F16 model can be in the same directory as the quants — it will be detected and excluded automatically.
-- Split-shard BF16 models are supported — point `--bf16` to the first shard only.
+- The baseline model can be in the same directory as the quants — it will be detected and excluded automatically. A Q8_0 baseline will not accidentally exclude Q8_0 quants.
+- Split-shard baselines are supported — point `--baseline` to the first shard only.
 - If logits generation is interrupted (Ctrl+C, crash), the partial file is automatically detected on the next run and the script prompts you to regenerate.
 - If you change `--dataset` between runs, the script should detects the mismatch and asks whether to regenerate the logits.
 - Results from ERROR entries (crashed or unparseable runs) are retried automatically on the next run.

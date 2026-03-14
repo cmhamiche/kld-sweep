@@ -3,16 +3,14 @@ kld_sweep.py — Cross-platform KLD evaluation sweep for GGUF quantizations.
 
 Usage:
     python kld_sweep.py --exe /path/to/llama-perplexity \
-                        --bf16 /path/to/model-bf16.gguf \
+                        --baseline /path/to/model-baseline.gguf \
                         --quants /path/to/quants/ \
                         --dataset /path/to/dataset.txt \
                         --output /path/to/output/ \
                         [--logits /path/to/logits.bin] \
                         [--args "-t 7 -c 512 -ngl 999 -cmoe"] \
-                        [--model-name MyModel] \
-                        [--dataset2 /path/to/second_dataset.txt] \
-                        [--logits2 /path/to/logits2.bin] \
-                        [--no-shutdown]
+                        [--args-baseline "-t 7 -c 512 -ngl 20"] \
+                        [--model-name MyModel]
 
 Resume: already completed entries in the CSV are skipped automatically.
 
@@ -96,15 +94,17 @@ def warn(msg: str, code: int):
 
 def parse_args():
     p = argparse.ArgumentParser(description="KLD sweep for GGUF quants.")
-    p.add_argument("--exe",         required=True,  help="Path to llama-perplexity binary")
-    p.add_argument("--bf16",        required=True,  help="Path to BF16 GGUF (first shard if split)")
-    p.add_argument("--quants",      required=True,  help="Directory containing quant GGUFs")
-    p.add_argument("--dataset",     required=True,  help="Primary evaluation dataset (.txt)")
-    p.add_argument("--output",      required=True,  help="Output directory for results and plots")
-    p.add_argument("--logits",      default=None,   help="Path to existing logits file (optional — auto-generated in --output if not provided, reused on resume)")
-    p.add_argument("--args",        default="-t 7 -c 4096 -ngl 99",
-                                                    help="Extra flags passed to llama-perplexity. Must be quoted: --args=\"-t 7 -c 4096 -ngl 36\"")
-    p.add_argument("--model-name",  default=None,   help="Short model name used in plot titles")
+    p.add_argument("--exe",           required=True,  help="Path to llama-perplexity binary")
+    p.add_argument("--baseline",      required=True,  help="Path to baseline GGUF (BF16, F16, Q8_0 — first shard if split)")
+    p.add_argument("--quants",        required=True,  help="Directory containing quant GGUFs")
+    p.add_argument("--dataset",       required=True,  help="Primary evaluation dataset (.txt)")
+    p.add_argument("--output",        required=True,  help="Output directory for results and plots")
+    p.add_argument("--logits",        default=None,   help="Path to existing logits file (optional — auto-generated in --output if not provided, reused on resume)")
+    p.add_argument("--args",          default="-t 7 -c 512 -ngl 99",
+                                                      help="Extra flags passed to llama-perplexity for quant evaluation. Must be quoted: --args=\"-t 7 -c 512 -ngl 36\"")
+    p.add_argument("--args-baseline", default=None,
+                                                      help="Extra flags passed to llama-perplexity for baseline logits generation only. Falls back to --args if not provided. Useful when the baseline does not fit in VRAM with the same settings as the quants.")
+    p.add_argument("--model-name",    default=None,   help="Short model name used in plot titles")
 
     return p.parse_args()
 
@@ -113,10 +113,10 @@ def gib(path: Path) -> float:
     return path.stat().st_size / (1024 ** 3)
 
 
-def validate_paths(exe: Path, bf16: Path, dataset: Path, quant_dir: Path):
+def validate_paths(exe: Path, baseline: Path, dataset: Path, quant_dir: Path):
     """Check all required inputs exist and are usable."""
     for p, label in [
-        (bf16,      "BF16 model"),
+        (baseline,  "Baseline model"),
         (dataset,   "Dataset"),
         (quant_dir, "Quant directory"),
     ]:
@@ -266,12 +266,12 @@ def run(cmd: list, label: str) -> tuple:
     return "".join(lines), proc.returncode
 
 
-def generate_logits(exe: Path, bf16: Path, dataset: Path, logits: Path, extra: list):
-    """Generate BF16 logits file. Cleans up partial file on failure."""
-    size_gib = gib(bf16)
-    print(f"\n[logits] Generating from {bf16.name} ({size_gib:.2f} GiB) — ETA will appear below...")
+def generate_logits(exe: Path, baseline: Path, dataset: Path, logits: Path, extra: list):
+    """Generate baseline logits file. Cleans up partial file on failure."""
+    size_gib = gib(baseline)
+    print(f"\n[logits] Generating from {baseline.name} ({size_gib:.2f} GiB) — ETA will appear below...")
     cmd = (
-        [str(exe), "-m", str(bf16), "-f", str(dataset)]
+        [str(exe), "-m", str(baseline), "-f", str(dataset)]
         + extra
         + ["--kl-divergence-base", str(logits)]
     )
@@ -543,13 +543,14 @@ def run_sweep(exe: Path, quant_files: list, dataset: Path, logits: Path,
 def main():
     args = parse_args()
 
-    exe       = Path(args.exe)
-    bf16      = Path(args.bf16)
-    quant_dir = Path(args.quants)
-    dataset   = Path(args.dataset)
-    out_dir   = Path(args.output)
-    extra     = args.args.split()
-    model_name = args.model_name or bf16.stem
+    exe        = Path(args.exe)
+    baseline   = Path(args.baseline)
+    quant_dir  = Path(args.quants)
+    dataset    = Path(args.dataset)
+    out_dir    = Path(args.output)
+    extra      = args.args.split()
+    extra_base = args.args_baseline.split() if args.args_baseline else extra
+    model_name = args.model_name or baseline.stem
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -557,21 +558,30 @@ def main():
     csv_path = out_dir / f"{model_name}_results.csv"
 
     # --- Validate ---
-    validate_paths(exe, bf16, dataset, quant_dir)
+    validate_paths(exe, baseline, dataset, quant_dir)
 
     # --- Find quants ---
-    # Exclude BF16 and its shards — match on stem prefix to catch split shards
-    bf16_stem_prefix = bf16.stem.split("-00")[0].lower()
+    # Always exclude the baseline file itself.
+    # For split-shard baselines (e.g. -00001-of-00002), also exclude other shards by prefix.
+    # Prefix matching is intentionally limited to shard patterns to avoid accidentally
+    # excluding quants that share a name fragment with the baseline (e.g. a Q8_0 baseline
+    # vs Q8_0 quants).
+    baseline_stem = baseline.stem
+    is_shard = bool(re.search(r"-\d{5}-of-\d{5}", baseline_stem))
+    baseline_shard_prefix = baseline_stem.split("-00")[0].lower() if is_shard else None
+
     all_gguf = sorted(quant_dir.glob("*.gguf"), key=lambda f: f.stat().st_size)
     quant_files = []
     skipped = []
     for f in all_gguf:
-        if f.resolve() == bf16.resolve() or bf16_stem_prefix in f.stem.lower():
+        is_baseline_file  = f.resolve() == baseline.resolve()
+        is_baseline_shard = baseline_shard_prefix and baseline_shard_prefix in f.stem.lower()
+        if is_baseline_file or is_baseline_shard:
             skipped.append(f.name)
         else:
             quant_files.append(f)
     if skipped:
-        print(f"\n[quants] Excluded (BF16/shard detected): {', '.join(skipped)}")
+        print(f"\n[quants] Excluded (baseline/shard detected): {', '.join(skipped)}")
     if not quant_files:
         fatal(
             f"No .gguf files found in: {quant_dir}\n"
@@ -581,14 +591,17 @@ def main():
     print(f"\nFound {len(quant_files)} quant file(s) in {quant_dir}")
 
     # --- Logits ---
+    if extra_base != extra:
+        print(f"[logits] Using --args-baseline for logits generation: {' '.join(extra_base)}")
+
     if logits.exists():
         if check_logits(logits, dataset):
             print(f"[logits] Using existing logits: {logits} ({gib(logits):.2f} GiB)")
         else:
-            generate_logits(exe, bf16, dataset, logits, extra)
+            generate_logits(exe, baseline, dataset, logits, extra_base)
             time.sleep(2)
     else:
-        generate_logits(exe, bf16, dataset, logits, extra)
+        generate_logits(exe, baseline, dataset, logits, extra_base)
         time.sleep(2)
 
     # --- Primary sweep ---
