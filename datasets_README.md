@@ -18,7 +18,7 @@ Download via the llama.cpp helper script:
 ```bash
 bash https://raw.githubusercontent.com/ggerganov/llama.cpp/master/scripts/get-wikitext-2.sh
 ```
-Use `wikitext-2-raw/wiki.test.raw` — 72 chunks at `-c 4096`.
+Use `wikitext-2-raw/wiki.test.raw`.
 
 **Custom corpus** — for instruct models, a chat-template-wrapped dataset gives more representative results than plain text. Assemble content from diverse domains (science, code, multilingual, etc.), wrap each sample in the model's chat template, and aim for 50–100 chunks at `-c 512` for eval, 500–1000 for imatrix calibration.
 
