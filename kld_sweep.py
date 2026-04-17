@@ -570,7 +570,8 @@ def main():
     is_shard = bool(re.search(r"-\d{5}-of-\d{5}", baseline_stem))
     baseline_shard_prefix = baseline_stem.split("-00")[0].lower() if is_shard else None
 
-    all_gguf = sorted(quant_dir.glob("*.gguf"), key=lambda f: f.stat().st_size)
+    # recursive=True walks all subdirectories — no path/name hardcoding needed
+    all_gguf = sorted(quant_dir.glob("**/*.gguf"), key=lambda f: f.stat().st_size)
     quant_files = []
     skipped = []
     for f in all_gguf:
