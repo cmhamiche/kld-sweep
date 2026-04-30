@@ -1,16 +1,30 @@
 # kld-sweep
 
-A cross-platform Python script to evaluate and compare GGUF quantizations of a model against a full-precision baseline (BF16, F16, or Q8_0) using KL Divergence and Perplexity, powered by [llama.cpp](https://github.com/ggerganov/llama.cpp).
+A cross-platform Python script to evaluate and compare GGUF quantizations of a model against a full-precision baseline (BF16 or F16) using KL Divergence and Perplexity, powered by [llama.cpp](https://github.com/ggerganov/llama.cpp).
 
 ---
 
 ## What it does
 
-For each `.gguf` file in a directory, the script runs `llama-perplexity` and measures how much the quantized model's output distribution diverges from the full precision baseline. Results are saved to a CSV and two plots are generated, KLD vs size and PPL vs size. An efficiency ranking (Euclidean distance from the ideal 0,0 point) is also computed.
+For each `.gguf` file in a directory, the script runs `llama-perplexity` and measures how much the quantized model's output distribution diverges from the full precision baseline. Results are saved to a CSV and a dual-axis scatter plot (KLD vs MDL_norm / model size) is generated. A ranked markdown report is also produced.
 
-Logits are generated once from the BF16/F16 model and reused for all quants. The sweep resumes automatically if interrupted — already completed entries in the CSV are skipped.
+Logits are generated once from the BF16/F16 model and reused for all quants. The sweep resumes automatically if interrupted -- already completed entries in the CSV are skipped.
 
-Compatible with **mainline llama.cpp** and **[ik_llama](https://github.com/ikawrakow/ik_llama.cpp)**.
+Compatible with **mainline llama.cpp** and **[ik_llama](https://github.com/ikawrakow/ik_llama.cpp)**. ik_llama returns non-zero exit codes on success -- the script parses output first and uses results if valid, regardless of exit code.
+
+---
+
+## Metrics
+
+| Metric | Description |
+|---|---|
+| **PPL** | Perplexity of the quantized model |
+| **KLD** | Mean KL Divergence vs the baseline |
+| **KLD 99.9%** | 99.9th percentile KLD -- captures tail divergence |
+| **BPW** | Bits per weight from model load metadata |
+| **MDL_norm** | `Size_GiB x 8 + log2(PPL)` -- bits/token amortised over 1B tokens |
+
+Results are sorted by MDL_norm (lower is better). This metric balances model size against quality in a single number.
 
 ---
 
@@ -19,10 +33,10 @@ Compatible with **mainline llama.cpp** and **[ik_llama](https://github.com/ikawr
 Python 3.10+
 
 ```
-pip install pandas matplotlib adjustText scipy
+pip install pandas matplotlib adjustText
 ```
 
-A llama.cpp build with `llama-perplexity` — download the latest release for your platform from [github.com/ggerganov/llama.cpp/releases](https://github.com/ggerganov/llama.cpp/releases).
+A llama.cpp build with `llama-perplexity` -- download the latest release for your platform from [github.com/ggerganov/llama.cpp/releases](https://github.com/ggerganov/llama.cpp/releases).
 
 ---
 
@@ -30,41 +44,41 @@ A llama.cpp build with `llama-perplexity` — download the latest release for yo
 
 ```
 python kld_sweep.py \
-  --exe      /path/to/llama-perplexity \
-  --baseline /path/to/model-BF16.gguf \
-  --quants   /path/to/quants/ \
-  --dataset  /path/to/dataset.txt \
-  --output   /path/to/output/ \
-  --model-name MyModel \
-  --args="-t 7 -c 512 -ngl 99"
+--exe /path/to/llama-perplexity \
+--baseline /path/to/model-BF16.gguf \
+--quants /path/to/quants/ \
+--dataset /path/to/dataset.txt \
+--output /path/to/output/ \
+--model-name MyModel \
+--args="-t 7 -c 512 -ngl 99"
 ```
 
 **Windows:**
 ```
 python kld_sweep.py ^
-  --exe      C:\llamacpp\llama-perplexity.exe ^
-  --baseline C:\models\MyModel-BF16.gguf ^
-  --quants   C:\models\quants\ ^
-  --dataset  C:\datasets\mydataset.txt ^
-  --output   C:\results\ ^
-  --model-name MyModel ^
-  --args="-t 7 -c 512 -ngl 36"
+--exe C:\llamacpp\llama-perplexity.exe ^
+--baseline C:\models\MyModel-BF16.gguf ^
+--quants C:\models\quants\ ^
+--dataset C:\datasets\mydataset.txt ^
+--output C:\results\ ^
+--model-name MyModel ^
+--args="-t 7 -c 512 -ngl 36"
 ```
 
 **When the baseline doesn't fit in VRAM with the same settings as the quants:**
 ```
 python kld_sweep.py ^
-  --exe           C:\llamacpp\llama-perplexity.exe ^
-  --baseline      C:\models\MyModel-BF16.gguf ^
-  --quants        C:\models\quants\ ^
-  --dataset       C:\datasets\mydataset.txt ^
-  --output        C:\results\ ^
-  --model-name    MyModel ^
-  --args="-t 7 -c 512 -ngl 99" ^
-  --args-baseline="-t 7 -c 512 -ngl 20"
+--exe C:\llamacpp\llama-perplexity.exe ^
+--baseline C:\models\MyModel-BF16.gguf ^
+--quants C:\models\quants\ ^
+--dataset C:\datasets\mydataset.txt ^
+--output C:\results\ ^
+--model-name MyModel ^
+--args="-t 7 -c 512 -ngl 99" ^
+--args-baseline="-t 7 -c 512 -ngl 20"
 ```
 
-> **Note:** Always use `--args="-t 7 ..."` with the `=` sign — the value contains spaces and will cause an error without it.
+> **Note:** Always use `--args="-t 7 ..."` with the `=` sign -- the value contains spaces and will cause an error without it.
 
 ---
 
@@ -73,14 +87,14 @@ python kld_sweep.py ^
 | Argument | Required | Description |
 |---|---|---|
 | `--exe` | Yes | Path to `llama-perplexity` binary |
-| `--baseline` | Yes | Path to baseline GGUF — BF16, F16, or Q8_0 (first shard if split) |
-| `--quants` | Yes | Directory containing quant GGUFs |
+| `--baseline` | Yes | Path to baseline GGUF -- BF16 or F16 (first shard if split) |
+| `--quants` | Yes | Directory containing quant GGUFs (searched recursively) |
 | `--dataset` | Yes | Plain text evaluation dataset |
-| `--output` | Yes | Output directory for CSV, plots, and logits |
+| `--output` | Yes | Output directory for report, plots, log, and logits |
 | `--model-name` | No | Short name used in filenames and plot titles |
-| `--logits` | No | Path to existing logits file — auto-generated in `--output` if not provided, reused on resume |
+| `--logits` | No | Path to existing logits file -- auto-generated in `--output` if not provided, reused on resume |
 | `--args` | No | Extra flags for llama-perplexity for quant evaluation (default: `-t 7 -c 512 -ngl 99`) |
-| `--args-baseline` | No | Extra flags for llama-perplexity for baseline logits generation only — falls back to `--args` if not provided. Use when the baseline needs different VRAM settings than the quants. |
+| `--args-baseline` | No | Extra flags for llama-perplexity for baseline logits generation only -- falls back to `--args` if not provided. Use when the baseline needs different VRAM settings than the quants. |
 
 ---
 
@@ -88,36 +102,74 @@ python kld_sweep.py ^
 
 | File | Description |
 |---|---|
-| `{model}_results.csv` | PPL and KLD for each quant, sorted by size |
-| `kld_plot_{model}.png` | KLD vs model size scatter plot |
-| `ppl_plot_{model}.png` | Perplexity vs model size scatter plot |
-| `{model}_efficiency.txt` | Efficiency ranking — Euclidean distance from (0,0) |
+| `{model}_report.md` | Ranked results table sorted by MDL_norm |
+| `mdl_kld_plot_{model}.png` | KLD vs MDL_norm dual-axis scatter plot |
+| `{model}_results.csv` | 8-column CSV with all metrics |
+| `{model}.log` | Sweep log -- errors, warnings, skipped quants |
 | `{model}-logits.bin` | BF16 logits (reused on resume) |
-| `{model}-logits.bin.meta` | Logits metadata sidecar — tracks which dataset generated the logits |
+| `{model}-logits.bin.meta` | Logits metadata sidecar -- tracks which dataset generated the logits |
+
+### CSV schema
+
+```
+Quantization, Size_GiB, PPL_Score, KLD_Score, MDL_norm, Num_Tokens, KLD_99, BPW
+```
+
+Backward compatible with older 4-column and 6-column formats -- MDL_norm is auto-computed for 4-column CSVs on load.
+
+---
+
+## Split-shard GGUFs
+
+Split-shard models (e.g. `model-00001-of-00003.gguf`) are handled automatically:
+
+- Point `--baseline` to the first shard only
+- Only the first shard of each quant is passed to `llama-perplexity`
+- Non-first shards are excluded from the sweep
+- Total size is computed as the sum of all shards
+- Shard suffixes are stripped from quant names
+
+---
+
+## Backfill
+
+After the sweep, any quant entries missing BPW are backfilled by running a minimal dry pass (`-c 1 -t 1`) to capture model load metadata. This is fast -- it loads the model just enough to print the BPW line, then exits.
+
+---
+
+## Plot styling
+
+- Uses the TOL qualitative colour palette (not default matplotlib)
+- Marker shapes are assigned per quantizer prefix (e.g. `IQ` vs `Q` vs `F` get different shapes)
+- Legend shows both colour and marker shape for each quantizer family
+- Labels are repelled from each other but dots stay in place (no point offset)
 
 ---
 
 ## Dataset
 
-Any plain UTF-8 text file works. A minimum of ~50,000 characters is recommended for meaningful results — more chunks means tighter confidence intervals.
+Any plain UTF-8 text file works. A minimum of ~50,000 characters is recommended for meaningful results -- more chunks means tighter confidence intervals.
 
 As a rule of thumb: 25+ chunks at `-c 512` gives credible separation between quants. 100+ chunks is better for tight comparisons.
 
 For instruct models, wrapping the dataset in the model's chat template (e.g. ChatML) gives more representative results than plain text, since the model's distribution is calibrated to that format.
 
-A sample dataset is not included in this repository — see [datasets_README.md](https://github.com/cmhamiche/kld-sweep/blob/main/datasets_README.md) for recommendations.
+A sample dataset is not included in this repository -- see [datasets_README.md](https://github.com/cmhamiche/kld-sweep/blob/main/datasets_README.md) for recommendations.
 
-To build a custom dataset tailored to specific languages, tasks, or quantization use cases, see **[kld-sweep-dataset](https://github.com/cmhamiche/kld-sweep-dataset)** — a companion tool that assembles and optionally chat-wraps evaluation and imatrix calibration datasets from the [eaddario/imatrix-calibration](https://huggingface.co/datasets/eaddario/imatrix-calibration) corpus.
+To build a custom dataset tailored to specific languages, tasks, or quantization use cases, see **[kld-sweep-dataset](https://github.com/cmhamiche/kld-sweep-dataset)** -- a companion tool that assembles and optionally chat-wraps evaluation and imatrix calibration datasets from the [eaddario/imatrix-calibration](https://huggingface.co/datasets/eaddario/imatrix-calibration) corpus.
 
 ---
 
 ## Notes
 
-- The baseline model can be in the same directory as the quants — it will be detected and excluded automatically. A Q8_0 baseline will not accidentally exclude Q8_0 quants.
-- Split-shard baselines are supported — point `--baseline` to the first shard only.
+- The baseline model can be in the same directory as the quants -- it will be detected and excluded automatically. Sibling shards of the baseline are also excluded.
+- Quantization names are extracted from GGUF metadata (`general.name`) -- the model name portion is stripped from the filename, leaving just the quant type (e.g. `IQ4_XS` instead of `Qwen3.5-0.8B-IQ4_XS`). Falls back to the full filename stem if metadata is unreadable.
+- Split-shard baselines are supported -- point `--baseline` to the first shard only.
+- ik_llama.cpp returns non-zero exit codes even on success. The script parses output first and uses results if PPL/KLD were extracted successfully, regardless of exit code.
 - If logits generation is interrupted (Ctrl+C, crash), the partial file is automatically detected on the next run and the script prompts you to regenerate.
-- If you change `--dataset` between runs, the script should detects the mismatch and asks whether to regenerate the logits.
-- Results from ERROR entries (crashed or unparseable runs) are retried automatically on the next run.
+- If you change `--dataset` between runs, the script detects the mismatch and asks whether to regenerate the logits.
+- ERROR entries (crashed or unparseable runs) are retried automatically on the next run.
+- The `--quants` directory is searched recursively -- subdirectories are included.
 
 ---
 

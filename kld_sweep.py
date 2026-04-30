@@ -1,20 +1,20 @@
 """
-kld_sweep.py — Cross-platform KLD evaluation sweep for GGUF quantizations.
+kld_sweep.py - KLD evaluation sweep for GGUF quantizations.
 
-Usage:
-    python kld_sweep.py --exe /path/to/llama-perplexity \
-                        --baseline /path/to/model-baseline.gguf \
-                        --quants /path/to/quants/ \
-                        --dataset /path/to/dataset.txt \
-                        --output /path/to/output/ \
-                        [--logits /path/to/logits.bin] \
-                        [--args "-t 7 -c 512 -ngl 999 -cmoe"] \
-                        [--args-baseline "-t 7 -c 512 -ngl 20"] \
-                        [--model-name MyModel]
+usage:
+python kld_sweep.py --exe /path/to/llama-perplexity \
+    --baseline /path/to/model-baseline.gguf \
+    --quants /path/to/quants/ \
+    --dataset /path/to/dataset.txt \
+    --output /path/to/output/ \
+    [--logits /path/to/logits.bin] \
+    [--args "-t 7 -c 512 -ngl 999 -cmoe"] \
+    [--args-baseline "-t 7 -c 512 -ngl 20"] \
+    [--model-name MyModel]
 
-Resume: already completed entries in the CSV are skipped automatically.
+resume: completed csv entries are skipped. error entries are retried.
 
-Dependencies: pandas, matplotlib, adjustText
+deps: pandas, matplotlib, adjustText
 pip install pandas matplotlib adjustText
 """
 
@@ -37,71 +37,51 @@ import pandas as pd
 from adjustText import adjust_text
 
 GGUF_TYPE_SIZES = {
-    0: 1,
-    1: 1,
-    2: 2,
-    3: 2,
-    4: 4,
-    5: 4,
-    6: 4,
-    7: 4,
-    8: None,
-    9: None,
-    10: 8,
-    11: 8,
-    12: 8,
+    0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 4,
+    8: None, 9: None, 10: 8, 11: 8, 12: 8,
 }
 
-# ---------------------------------------------------------------------------
-# Error codes — referenced in FAQ.md
-# ---------------------------------------------------------------------------
-ERR_PATH_NOT_FOUND   = 1   # A required file or directory does not exist
-ERR_NOT_EXECUTABLE   = 2   # llama-perplexity binary is not executable
-ERR_LOGITS_FAILED    = 3   # Logits generation subprocess returned non-zero
-ERR_LOGITS_PARTIAL   = 4   # Logits file exists but is suspiciously small
-ERR_NO_QUANTS        = 5   # No .gguf files found in quant directory
-ERR_PARSE_FAILED     = 6   # Could not parse PPL/KLD from llama-perplexity output
-ERR_SUBPROCESS       = 7   # llama-perplexity crashed or returned non-zero during sweep
-ERR_DATASET_EMPTY    = 8   # Dataset file is empty or too small
-ERR_CSV_CORRUPT      = 9   # Existing CSV could not be parsed
-ERR_PLOT_FAILED = 10 # Plotting failed (e.g. not enough valid results)
-ERR_LOG_FAILED = 11 # Log or report file could not be written
+# error codes - see FAQ.md
+ERR_PATH_NOT_FOUND = 1
+ERR_NOT_EXECUTABLE = 2
+ERR_LOGITS_FAILED = 3
+ERR_LOGITS_PARTIAL = 4
+ERR_NO_QUANTS = 5
+ERR_PARSE_FAILED = 6
+ERR_SUBPROCESS = 7
+ERR_DATASET_EMPTY = 8
+ERR_CSV_CORRUPT = 9
+ERR_PLOT_FAILED = 10
+ERR_LOG_FAILED = 11
 
-# Minimum expected logits file size: 1 MB — anything smaller is likely partial/corrupt
-LOGITS_MIN_BYTES = 1 * 1024 * 1024
+LOGITS_MIN_BYTES = 1 * 1024 * 1024  # 1mb, anything less is probably corrupt
 
 _RE_SHARD = re.compile(r"-(\d{5})-of-(\d{5})$")
 
-# ---------------------------------------------------------------------------
-# Colours — extended palette, auto-assigned to unknown quantizers
-# ---------------------------------------------------------------------------
+# tol qualitative palette + marker shapes per quantizer prefix
 PALETTE = [
     "#4477AA", "#EE6677", "#228833", "#CCBB44",
     "#66CCEE", "#AA3377", "#BBBBBB",
 ]
-
 MARKERS = [
     "o", "D", "s", "^", "v", "P", "X", "p", "h", "<", ">", "H", "d",
 ]
 
-BG_COLOR   = "#F5F5DC"
+BG_COLOR = "#F5F5DC"
 GRID_COLOR = "#D3D3D3"
 
 plt.rcParams.update({
     "figure.facecolor": BG_COLOR,
-    "axes.facecolor":   BG_COLOR,
-    "axes.edgecolor":   "#333333",
-    "axes.labelcolor":  "#333333",
-    "text.color":       "#333333",
-    "xtick.color":      "#333333",
-    "ytick.color":      "#333333",
-    "font.family":      "sans-serif",
-    "font.size":        10,
+    "axes.facecolor": BG_COLOR,
+    "axes.edgecolor": "#333333",
+    "axes.labelcolor": "#333333",
+    "text.color": "#333333",
+    "xtick.color": "#333333",
+    "ytick.color": "#333333",
+    "font.family": "sans-serif",
+    "font.size": 10,
 })
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def read_gguf_name(path: Path) -> str | None:
     try:
@@ -143,10 +123,10 @@ def read_gguf_name(path: Path) -> str | None:
         return None
     return None
 
+
 def quant_name_from_file(path: Path) -> str:
     gguf_name = read_gguf_name(path)
     stem = path.stem
-    # Strip shard suffix (e.g. -00001-of-00002) — all shards share the same name
     shard = _RE_SHARD.search(stem)
     if shard:
         stem = stem[:shard.start()]
@@ -165,15 +145,14 @@ def quant_name_from_file(path: Path) -> str:
     else:
         return stem
 
+
 def fatal(msg: str, code: int):
-    """Print a clear error and exit with a documented code."""
     print(f"\n[ERROR E{code:02d}] {msg}", file=sys.stderr)
-    print(f"  -> See FAQ.md entry E{code:02d} for troubleshooting.", file=sys.stderr)
+    print(f" -> See FAQ.md entry E{code:02d} for troubleshooting.", file=sys.stderr)
     sys.exit(code)
 
 
 def warn(msg: str, code: int):
-    """Print a non-fatal warning with its FAQ reference."""
     print(f"\n[WARN W{code:02d}] {msg}", file=sys.stderr)
     print(f" -> See FAQ.md entry E{code:02d} for details.", file=sys.stderr)
 
@@ -186,7 +165,7 @@ class SweepLogger:
         self._write_header()
 
     def _write_header(self):
-        self._file.write(f"# kld-sweep log — {self.model_name}\n\n")
+        self._file.write(f"# kld-sweep log - {self.model_name}\n\n")
         self._file.flush()
 
     def log(self, msg: str):
@@ -194,13 +173,13 @@ class SweepLogger:
         self._file.flush()
 
     def log_skip(self, name: str):
-        self.log(f"- [SKIP] {name} — already in results")
+        self.log(f"- [SKIP] {name} - already in results")
 
     def log_error(self, name: str, detail: str):
         self.log(f"- [ERROR] {name}: {detail}")
 
     def log_result(self, name: str, ppl: str, kld: str, size: float, mdl_norm, num_tokens: int, kld_99: str = "", bpw: str = ""):
-        parts = f"- [OK] {name} — PPL: {ppl} | KLD: {kld} | Size: {size:.3f} GiB | MDL_norm: {mdl_norm:.3f} | Tokens: {num_tokens}"
+        parts = f"- [OK] {name} - PPL: {ppl} | KLD: {kld} | Size: {size:.3f} GiB | MDL_norm: {mdl_norm:.3f} | Tokens: {num_tokens}"
         if kld_99:
             parts += f" | KLD_99: {kld_99}"
         if bpw:
@@ -214,17 +193,16 @@ class SweepLogger:
 def parse_args():
     p = argparse.ArgumentParser(description="KLD sweep for GGUF quants.")
     p.add_argument("--exe", required=True, help="Path to llama-perplexity binary")
-    p.add_argument("--baseline", required=True, help="Path to baseline GGUF (BF16 or F16 — first shard if split)")
+    p.add_argument("--baseline", required=True, help="Path to baseline GGUF (BF16 or F16, first shard if split)")
     p.add_argument("--quants", required=True, help="Directory containing quant GGUFs")
-    p.add_argument("--dataset", required=True, help="Primary evaluation dataset (.txt)")
+    p.add_argument("--dataset", required=True, help="Evaluation dataset (.txt)")
     p.add_argument("--output", required=True, help="Output directory for report, plots, log, and logits")
-    p.add_argument("--logits", default=None, help="Path to existing logits file (optional — auto-generated in --output if not provided, reused on resume)")
+    p.add_argument("--logits", default=None, help="Path to existing logits file (auto-generated in --output if not provided, reused on resume)")
     p.add_argument("--args", default="-t 7 -c 512 -ngl 99",
-        help="Extra flags passed to llama-perplexity for quant evaluation. Must be quoted: --args=\"-t 7 -c 512 -ngl 36\"")
+                   help="Extra flags for llama-perplexity quant eval. Must use =: --args=\"-t 7 -c 512 -ngl 36\"")
     p.add_argument("--args-baseline", default=None,
-        help="Extra flags passed to llama-perplexity for baseline logits generation only. Falls back to --args if not provided. Useful when the baseline does not fit in VRAM with the same settings as the quants.")
-    p.add_argument("--model-name", default=None, help="Short model name used in plot titles")
-
+                   help="Extra flags for baseline logits generation only. Falls back to --args. Use when baseline needs different VRAM settings.")
+    p.add_argument("--model-name", default=None, help="Short model name for plot titles")
     return p.parse_args()
 
 
@@ -233,13 +211,11 @@ def gib(path: Path) -> float:
 
 
 def shard_base(stem: str) -> str | None:
-    """Return the prefix before the shard suffix, or None if not a shard."""
     m = _RE_SHARD.search(stem)
     return stem[:m.start()] if m else None
 
 
 def shard_total_gib(first_shard: Path, quant_dir: Path) -> float:
-    """Sum file sizes of all shards sharing the same base prefix as first_shard."""
     base = shard_base(first_shard.stem)
     if base is None:
         return gib(first_shard)
@@ -251,10 +227,9 @@ def shard_total_gib(first_shard: Path, quant_dir: Path) -> float:
 
 
 def validate_paths(exe: Path, baseline: Path, dataset: Path, quant_dir: Path) -> int:
-    """Check all required inputs exist and are usable."""
     for p, label in [
-        (baseline,  "Baseline model"),
-        (dataset,   "Dataset"),
+        (baseline, "Baseline model"),
+        (dataset, "Dataset"),
         (quant_dir, "Quant directory"),
     ]:
         if not p.exists():
@@ -263,24 +238,24 @@ def validate_paths(exe: Path, baseline: Path, dataset: Path, quant_dir: Path) ->
     if not exe.exists():
         fatal(
             f"llama-perplexity binary not found: {exe}\n"
-            "  Download llama.cpp from https://github.com/ggerganov/llama.cpp/releases\n"
-            "  and point --exe to llama-perplexity (or llama-perplexity.exe on Windows).",
+            " Download from https://github.com/ggerganov/llama.cpp/releases\n"
+            " and point --exe to llama-perplexity (or .exe on Windows).",
             ERR_PATH_NOT_FOUND,
         )
 
     if not os.access(exe, os.X_OK) and sys.platform != "win32":
         fatal(
             f"llama-perplexity is not executable: {exe}\n"
-            f"  Run: chmod +x {exe}",
+            f" Run: chmod +x {exe}",
             ERR_NOT_EXECUTABLE,
         )
 
     if "perplexity" not in exe.name.lower():
         fatal(
             f"Unexpected executable name: {exe.name}\n"
-            "  --exe should point to llama-perplexity (or llama-perplexity.exe on Windows).\n"
-            f"  Got: {exe.name}\n"
-            "  If you renamed the binary, this check can be ignored but make sure it is the right tool.",
+            " --exe should point to llama-perplexity (or .exe on Windows).\n"
+            f" Got: {exe.name}\n"
+            " If you renamed the binary, make sure it is the right tool.",
             ERR_NOT_EXECUTABLE,
         )
 
@@ -291,7 +266,7 @@ def validate_paths(exe: Path, baseline: Path, dataset: Path, quant_dir: Path) ->
     if dataset_size < 1024:
         fatal(
             f"Dataset file is too small ({dataset_size} bytes): {dataset}\n"
-            "  Make sure the dataset is a plain text file with sufficient content.",
+            " Make sure the dataset is a plain text file with sufficient content.",
             ERR_DATASET_EMPTY,
         )
     return dataset_size
@@ -302,32 +277,30 @@ def logits_meta_path(logits: Path) -> Path:
 
 
 def write_logits_meta(logits: Path, dataset: Path, dataset_size: int):
-    """Write sidecar metadata after successful logits generation."""
     meta = {"dataset": str(dataset.resolve()), "dataset_size": dataset_size}
     logits_meta_path(logits).write_text(json.dumps(meta), encoding="utf-8")
 
 
 def check_logits(logits: Path, dataset: Path, dataset_size: int):
-    """Check logits file is complete and was generated from the current dataset."""
     size = logits.stat().st_size
     if size < LOGITS_MIN_BYTES:
         fatal(
             f"Logits file exists but is suspiciously small ({size} bytes):\n"
-            f"  {logits}\n"
-            "  This usually means a previous logits generation was interrupted.\n"
-            "  Delete it and re-run:\n"
-            f"  Windows: del \"{logits}\"\n"
-            f"  Linux/macOS: rm \"{logits}\"",
+            f" {logits}\n"
+            " This usually means a previous logits generation was interrupted.\n"
+            " Delete it and re-run:\n"
+            f" Windows: del \"{logits}\"\n"
+            f" Linux/macOS: rm \"{logits}\"",
             ERR_LOGITS_PARTIAL,
         )
     meta_path = logits_meta_path(logits)
     if not meta_path.exists():
         fatal(
-            f"Logits file exists but has no metadata sidecar — generation was likely interrupted:\n"
-            f"  {logits}\n"
-            "  Delete it and re-run:\n"
-            f"  Windows: del \"{logits}\"\n"
-            f"  Linux/macOS: rm \"{logits}\"",
+            f"Logits file exists but has no metadata sidecar - generation was likely interrupted:\n"
+            f" {logits}\n"
+            " Delete it and re-run:\n"
+            f" Windows: del \"{logits}\"\n"
+            f" Linux/macOS: rm \"{logits}\"",
             ERR_LOGITS_PARTIAL,
         )
     try:
@@ -337,11 +310,11 @@ def check_logits(logits: Path, dataset: Path, dataset_size: int):
         if recorded_size != current_size:
             print(
                 f"\n[WARN] Logits were generated from a different dataset."
-                f"\n  Logits dataset : {meta.get('dataset', 'unknown')} ({recorded_size} bytes)"
-                f"\n  Current dataset: {dataset} ({current_size} bytes)"
+                f"\n Logits dataset : {meta.get('dataset', 'unknown')} ({recorded_size} bytes)"
+                f"\n Current dataset: {dataset} ({current_size} bytes)"
             )
             try:
-                answer = input("  Delete existing logits and regenerate? [y/N]: ").strip().lower()
+                answer = input(" Delete existing logits and regenerate? [y/N]: ").strip().lower()
             except (EOFError, KeyboardInterrupt):
                 answer = "n"
             if answer == "y":
@@ -351,28 +324,26 @@ def check_logits(logits: Path, dataset: Path, dataset_size: int):
                 return False
             else:
                 fatal(
-                    "Logits dataset mismatch — cannot continue.\n"
-                    "  Delete the logits file manually and re-run:\n"
-                    f"  Windows: del \"{logits}\"\n"
-                    f"  Linux/macOS: rm \"{logits}\"",
+                    "Logits dataset mismatch - cannot continue.\n"
+                    " Delete the logits file manually and re-run:\n"
+                    f" Windows: del \"{logits}\"\n"
+                    f" Linux/macOS: rm \"{logits}\"",
                     ERR_LOGITS_PARTIAL,
                 )
     except Exception as e:
         fatal(
-            f"Could not read logits metadata: {meta_path}\n  Reason: {e}\n"
-            "  Delete both files and re-run:\n"
-            f"  Windows: del \"{logits}\" & del \"{meta_path}\"\n"
-            f"  Linux/macOS: rm \"{logits}\" \"{meta_path}\"",
+            f"Could not read logits metadata: {meta_path}\n Reason: {e}\n"
+            " Delete both files and re-run:\n"
+            f" Windows: del \"{logits}\" & del \"{meta_path}\"\n"
+            f" Linux/macOS: rm \"{logits}\" \"{meta_path}\"",
             ERR_LOGITS_PARTIAL,
         )
     return True
 
 
 def run(cmd: list, label: str) -> tuple:
-    """
-    Run a subprocess, stream output to console, return (full_output, returncode).
-    Does NOT raise on non-zero -- caller decides what to do.
-    """
+    # run subprocess, stream output, return (full_output, returncode)
+    # does not raise on non-zero - caller decides
     print(f"\n>>> {label}", flush=True)
     try:
         proc = subprocess.Popen(
@@ -386,13 +357,13 @@ def run(cmd: list, label: str) -> tuple:
     except FileNotFoundError:
         fatal(
             f"Could not launch binary: {cmd[0]}\n"
-            "  Check that the path is correct and the file exists.",
+            " Check that the path is correct and the file exists.",
             ERR_PATH_NOT_FOUND,
         )
     except PermissionError:
         fatal(
             f"Permission denied when launching: {cmd[0]}\n"
-            f"  On Linux/macOS run: chmod +x {cmd[0]}",
+            f" On Linux/macOS run: chmod +x {cmd[0]}",
             ERR_NOT_EXECUTABLE,
         )
 
@@ -405,9 +376,8 @@ def run(cmd: list, label: str) -> tuple:
 
 
 def generate_logits(exe: Path, baseline: Path, dataset: Path, logits: Path, extra: list, dataset_size: int):
-    """Generate baseline logits file. Cleans up partial file on failure."""
     size_gib = gib(baseline)
-    print(f"\n[logits] Generating from {baseline.name} ({size_gib:.2f} GiB) — ETA will appear below...")
+    print(f"\n[logits] Generating from {baseline.name} ({size_gib:.2f} GiB) - ETA will appear below...")
     cmd = (
         [str(exe), "-m", str(baseline), "-f", str(dataset)]
         + extra
@@ -419,7 +389,7 @@ def generate_logits(exe: Path, baseline: Path, dataset: Path, logits: Path, extr
         if not logits.exists() or logits.stat().st_size < LOGITS_MIN_BYTES:
             if logits.exists():
                 logits.unlink()
-            print(f"[logits] Partial logits file deleted: {logits}")
+                print(f"[logits] Partial logits file deleted: {logits}")
             fatal(
                 f"Logits generation failed (exit code {rc}).\n"
                 " Common causes:\n"
@@ -430,14 +400,14 @@ def generate_logits(exe: Path, baseline: Path, dataset: Path, logits: Path, extr
                 + "\n".join(raw.splitlines()[-20:]),
                 ERR_LOGITS_FAILED,
             )
-        print(f"[logits] Note: exit code {rc} but logits file looks valid — continuing")
+        print(f"[logits] Note: exit code {rc} but logits file looks valid - continuing")
 
     if not logits.exists() or logits.stat().st_size < LOGITS_MIN_BYTES:
         if logits.exists():
             logits.unlink()
         fatal(
             "Logits generation appeared to succeed (exit 0) but output file is missing or empty.\n"
-            "  Check available disk space.",
+            " Check available disk space.",
             ERR_LOGITS_PARTIAL,
         )
 
@@ -492,7 +462,7 @@ def load_csv(path: Path) -> dict:
                     row["KLD_99"] = ""
                     row["BPW"] = ""
                     results[row["Quantization"]] = row
-                warn("CSV was 6-column format — KLD_99 and BPW columns added (empty). Re-run to populate.", ERR_CSV_CORRUPT)
+                warn("CSV was 6-column format - KLD_99 and BPW columns added (empty). Re-run to populate.", ERR_CSV_CORRUPT)
             elif reader.fieldnames == old4:
                 for row in reader:
                     try:
@@ -505,7 +475,7 @@ def load_csv(path: Path) -> dict:
                     row["KLD_99"] = ""
                     row["BPW"] = ""
                     results[row["Quantization"]] = row
-                warn("CSV was old 4-column format — MDL_norm auto-computed, KLD_99/BPW/Num_Tokens empty. Re-run to populate.", ERR_CSV_CORRUPT)
+                warn("CSV was old 4-column format - MDL_norm auto-computed, KLD_99/BPW/Num_Tokens empty. Re-run to populate.", ERR_CSV_CORRUPT)
             else:
                 fatal(
                     f"CSV has unexpected columns: {reader.fieldnames}\n"
@@ -532,12 +502,8 @@ def save_csv(path: Path, results: dict):
         w.writerows(rows)
 
 
-# ---------------------------------------------------------------------------
-# Source / label helpers
-# ---------------------------------------------------------------------------
-
 def get_source_styles(df: pd.DataFrame) -> tuple[dict, dict, dict]:
-    """Auto-assign TOL colours + marker shapes to quantizer prefixes and build a name->prefix lookup."""
+    # assign tol colours + marker shapes per quantizer prefix
     prefixes = {}
     for name in df["Quantization"]:
         prefix = name.split("_")[0] if "_" in name else name.split(".")[0]
@@ -564,13 +530,11 @@ def get_label(name: str, model_name: str) -> str:
     return name.strip("-_.")
 
 
-# ---------------------------------------------------------------------------
-# Plots
-# ---------------------------------------------------------------------------
+# plots
 
 def mdl_kld_plot(df: pd.DataFrame, out_path: Path, color_map: dict, marker_map: dict, model_name: str):
     if df.empty:
-        warn("No valid data for MDL-KLD plot -- skipping.", ERR_PLOT_FAILED)
+        warn("No valid data for MDL-KLD plot - skipping.", ERR_PLOT_FAILED)
         return
     try:
         fig, ax = plt.subplots(figsize=(15, 9), dpi=200)
@@ -593,6 +557,7 @@ def mdl_kld_plot(df: pd.DataFrame, out_path: Path, color_map: dict, marker_map: 
             texts.append(ax.text(row["MDL_norm"], kld_val,
                                  row["Label"], fontsize=8, alpha=0.95, zorder=11))
 
+        # labels repel each other but dots stay put
         adjust_text(texts, ax=ax,
                     force_text=(0.6, 0.9), force_points=(0, 0),
                     arrowprops=dict(arrowstyle="-", color="gray", lw=0.4, alpha=0.5),
@@ -603,7 +568,7 @@ def mdl_kld_plot(df: pd.DataFrame, out_path: Path, color_map: dict, marker_map: 
         ax.set_ylabel("KL Divergence (log scale, lower is better)", fontsize=12, fontweight="bold")
         ax2.set_xlabel("Model Size (GiB)", fontsize=12, fontweight="bold")
         ax.grid(True, color=GRID_COLOR, linestyle="--", linewidth=0.5, alpha=0.6)
-        ax.set_title(f"{model_name} — KLD vs MDL_norm", fontsize=14, fontweight="bold", pad=15)
+        ax.set_title(f"{model_name} - KLD vs MDL_norm", fontsize=14, fontweight="bold", pad=15)
 
         legend_handles = [
             mlines.Line2D([], [], marker=marker_map.get(s, "o"), color="w",
@@ -623,12 +588,12 @@ def mdl_kld_plot(df: pd.DataFrame, out_path: Path, color_map: dict, marker_map: 
 
 def generate_markdown_report(df: pd.DataFrame, model_name: str, out_path: Path):
     if df.empty:
-        warn("No valid data for markdown report -- skipping.", ERR_LOG_FAILED)
+        warn("No valid data for markdown report - skipping.", ERR_LOG_FAILED)
         return
     lines = []
-    lines.append(f"# KLD-Sweep Report — {model_name}")
+    lines.append(f"# KLD-Sweep Report - {model_name}")
     lines.append("")
-    lines.append("MDL_norm = Size_GiB × 8 + log₂(PPL) [bits/token, amortised over 1B tokens]")
+    lines.append("MDL_norm = Size_GiB x 8 + log2(PPL) [bits/token, amortised over 1B tokens]")
     lines.append("")
     lines.append("## Results (sorted by MDL_norm)")
     lines.append("")
@@ -636,8 +601,8 @@ def generate_markdown_report(df: pd.DataFrame, model_name: str, out_path: Path):
     lines.append("|------|--------------|------------|-----|-----|-----|-----------|----------|")
     df_sorted = df.sort_values("MDL_norm").reset_index(drop=True)
     for i, (_, row) in enumerate(df_sorted.iterrows(), 1):
-        bpw = f"{row['BPW']:.3f}" if pd.notna(row.get("BPW")) and row.get("BPW") != "" else "—"
-        kld99 = f"{row['KLD_99']:.6f}" if pd.notna(row.get("KLD_99")) and row.get("KLD_99") != "" else "—"
+        bpw = f"{row['BPW']:.3f}" if pd.notna(row.get("BPW")) and row.get("BPW") != "" else "-"
+        kld99 = f"{row['KLD_99']:.6f}" if pd.notna(row.get("KLD_99")) and row.get("KLD_99") != "" else "-"
         lines.append(
             f"| {i} | {row['Quantization']} | {row['Size_GiB']:.3f} | "
             f"{bpw} | {row['PPL_Score']:.4f} | {row['KLD_Score']:.6f} | {kld99} | {row['MDL_norm']:.3f} |"
@@ -653,7 +618,7 @@ def generate_markdown_report(df: pd.DataFrame, model_name: str, out_path: Path):
 
 
 def backfill_metadata(exe: Path, quant_files: list, extra: list, results: dict, csv_path: Path, dataset: Path):
-    """Dry-run llama-perplexity on quants missing BPW to capture metadata from model load."""
+    # dry-run quants missing bpw - loads model just enough to print metadata then exits
     needed = []
     for qf in quant_files:
         name = quant_name_from_file(qf)
@@ -663,7 +628,7 @@ def backfill_metadata(exe: Path, quant_files: list, extra: list, results: dict, 
     if not needed:
         return
 
-    print(f"\n[backfill] {len(needed)} quant(s) missing BPW — running dry passes to capture metadata...")
+    print(f"\n[backfill] {len(needed)} quant(s) missing BPW - running dry passes to capture metadata...")
     for qf, name in needed:
         cmd = [str(exe), "-m", str(qf), "-f", str(dataset), "-c", "1", "-t", "1"] + extra
         raw, rc = run(cmd, f"Backfill BPW: {name}")
@@ -680,9 +645,7 @@ def backfill_metadata(exe: Path, quant_files: list, extra: list, results: dict, 
         time.sleep(1)
 
 
-# ---------------------------------------------------------------------------
-# Sweep runner
-# ---------------------------------------------------------------------------
+# sweep runner
 
 def run_sweep(exe: Path, quant_files: list, dataset: Path, logits: Path,
               extra: list, csv_path: Path, label: str,
@@ -693,6 +656,7 @@ def run_sweep(exe: Path, quant_files: list, dataset: Path, logits: Path,
 
     for qf in quant_files:
         name = quant_name_from_file(qf)
+        # use total shard size for split ggufs, single file size otherwise
         size = round(shard_total_gib(qf, quant_dir) if quant_dir and shard_base(qf.stem) else gib(qf), 3)
 
         existing = results.get(name)
@@ -718,7 +682,7 @@ def run_sweep(exe: Path, quant_files: list, dataset: Path, logits: Path,
                 " Last 20 lines of output:\n"
                 + "\n".join(raw.splitlines()[-20:]) + "\n"
                 " This may mean llama-perplexity output format has changed.\n"
-                " Result recorded as ERROR -- sweep will continue.",
+                " Result recorded as ERROR - sweep will continue.",
                 ERR_PARSE_FAILED,
             )
             results[name] = {
@@ -733,8 +697,9 @@ def run_sweep(exe: Path, quant_files: list, dataset: Path, logits: Path,
             time.sleep(1)
             continue
 
+        # ik_llama returns non-zero on success - use result if parsing worked
         if rc != 0:
-            print(f" [note] exit code {rc} but output parsed OK — using result")
+            print(f" [note] exit code {rc} but output parsed OK - using result")
 
         print(f"-> PPL: {ppl} | KLD: {kld} | KLD_99: {kld_99 or 'N/A'} | BPW: {bpw or 'N/A'}")
         try:
@@ -752,51 +717,40 @@ def run_sweep(exe: Path, quant_files: list, dataset: Path, logits: Path,
             logger.log_result(name, ppl, kld, size, mdl_norm, num_tokens, kld_99=kld_99, bpw=bpw)
 
     if errors:
-        print(f"\n[!] {len(errors)} file(s) recorded as ERROR — see log file for details.")
+        print(f"\n[!] {len(errors)} file(s) recorded as ERROR - see log file for details.")
         print(" Re-run the script to retry ERROR entries.")
 
     return results
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+# main
 
 def main():
     args = parse_args()
 
-    exe        = Path(args.exe)
-    baseline   = Path(args.baseline)
-    quant_dir  = Path(args.quants)
-    dataset    = Path(args.dataset)
-    out_dir    = Path(args.output)
-    extra      = args.args.split()
+    exe = Path(args.exe)
+    baseline = Path(args.baseline)
+    quant_dir = Path(args.quants)
+    dataset = Path(args.dataset)
+    out_dir = Path(args.output)
+    extra = args.args.split()
     extra_base = args.args_baseline.split() if args.args_baseline else extra
     model_name = args.model_name or baseline.stem
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    logits   = Path(args.logits) if args.logits else out_dir / f"{model_name}-logits.bin"
+    logits = Path(args.logits) if args.logits else out_dir / f"{model_name}-logits.bin"
     csv_path = out_dir / f"{model_name}_results.csv"
     log_path = out_dir / f"{model_name}.log"
     report_path = out_dir / f"{model_name}_report.md"
 
-    # --- Validate ---
     dataset_size = validate_paths(exe, baseline, dataset, quant_dir)
 
-    # --- Find quants ---
-    # Always exclude the baseline file itself.
-    # For split-shard baselines (e.g. -00001-of-00002), also exclude other shards by prefix.
-    # Prefix matching is intentionally limited to shard patterns to avoid accidentally
-    # excluding quants that share a name fragment with the baseline (e.g. a BF16 baseline
-    # vs BF16 quants).
-    # Non-first shards (-00002-of-NNNNN, etc.) are excluded — llama-perplexity loads them
-    # automatically from the first shard.
+    # find quants - exclude baseline, its sibling shards, and non-first shards
     baseline_stem = baseline.stem
     is_shard = bool(_RE_SHARD.search(baseline_stem))
     baseline_shard_prefix = shard_base(baseline_stem) if is_shard else None
 
-    # recursive=True walks all subdirectories — no path/name hardcoding needed
     all_gguf = sorted(quant_dir.glob("**/*.gguf"), key=lambda f: f.stat().st_size)
     quant_files = []
     skipped = []
@@ -820,7 +774,7 @@ def main():
         )
     print(f"\nFound {len(quant_files)} quant file(s) in {quant_dir}")
 
-    # --- Logits ---
+    # logits
     if extra_base != extra:
         print(f"[logits] Using --args-baseline for logits generation: {' '.join(extra_base)}")
 
@@ -832,7 +786,7 @@ def main():
     if need_generate:
         generate_logits(exe, baseline, dataset, logits, extra_base, dataset_size)
 
-    # --- Primary sweep ---
+    # sweep
     existing = load_csv(csv_path)
     logger = SweepLogger(log_path, model_name)
     try:
@@ -843,10 +797,10 @@ def main():
     print(f"\nPrimary results saved to {csv_path}")
     print(f"Log saved to {log_path}")
 
-    # --- Backfill BPW for entries missing it ---
+    # backfill bpw for entries missing it
     backfill_metadata(exe, quant_files, extra, results, csv_path, dataset)
 
-    # --- Build DataFrame ---
+    # build dataframe
     rows = []
     for r in results.values():
         try:
@@ -883,15 +837,11 @@ def main():
     df["Label"] = df["Quantization"].apply(lambda n: get_label(n, model_name))
     df = df.sort_values("MDL_norm")
 
-    # --- Scatter plots ---
+    # plot + report
     mdl_kld_plot(df, out_dir / f"mdl_kld_plot_{model_name}.png", color_map, marker_map, model_name)
-
-    # --- Efficiency report ---
     generate_markdown_report(df, model_name, report_path)
 
     print("\nAll done.")
-
-
 
 
 if __name__ == "__main__":
