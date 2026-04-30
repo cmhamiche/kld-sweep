@@ -2,8 +2,6 @@
 
 A Python script to compare GGUF quantizations of a model against a baseline (BF16 or F16) using KL Divergence and Perplexity, powered by [llama.cpp](https://github.com/ggerganov/llama.cpp).
 
----
-
 ## What it does
 
 For each `.gguf` file in a directory, the script runs `llama-perplexity` and measures how much the quantized model's output distribution diverges from the full precision baseline. Results are saved to a CSV and a dual-axis scatter plot (KLD vs MDL_norm / model size) is generated. A ranked markdown report is also produced.
@@ -11,8 +9,6 @@ For each `.gguf` file in a directory, the script runs `llama-perplexity` and mea
 Logits are generated once from the BF16/F16 model and reused for all quants. The sweep resumes automatically if interrupted -- already completed entries in the CSV are skipped.
 
 Compatible with **mainline llama.cpp** and **[ik_llama](https://github.com/ikawrakow/ik_llama.cpp)**. ik_llama returns non-zero exit codes on success -- the script parses output first and uses results if valid, regardless of exit code.
-
----
 
 ## Metrics
 
@@ -26,8 +22,6 @@ Compatible with **mainline llama.cpp** and **[ik_llama](https://github.com/ikawr
 
 Results are sorted by MDL_norm (lower is better). This metric balances model size against quality in a single number.
 
----
-
 ## Requirements
 
 Python 3.10+
@@ -37,8 +31,6 @@ pip install pandas matplotlib adjustText
 ```
 
 A llama.cpp build with `llama-perplexity` -- download the latest release for your platform from [github.com/ggerganov/llama.cpp/releases](https://github.com/ggerganov/llama.cpp/releases).
-
----
 
 ## Usage
 
@@ -80,8 +72,6 @@ python kld_sweep.py ^
 
 > **Note:** Always use `--args="-t 7 ..."` with the `=` sign -- the value contains spaces and will cause an error without it.
 
----
-
 ## Arguments
 
 | Argument | Required | Description |
@@ -95,8 +85,6 @@ python kld_sweep.py ^
 | `--logits` | No | Path to existing logits file -- auto-generated in `--output` if not provided, reused on resume |
 | `--args` | No | Extra flags for llama-perplexity for quant evaluation (default: `-t 7 -c 512 -ngl 99`) |
 | `--args-baseline` | No | Extra flags for llama-perplexity for baseline logits generation only -- falls back to `--args` if not provided. Use when the baseline needs different VRAM settings than the quants. |
-
----
 
 ## Output
 
@@ -121,8 +109,6 @@ Quantization, Size_GiB, PPL_Score, KLD_Score, MDL_norm, Num_Tokens, KLD_99, BPW
 - Uses the TOL qualitative colour palette (not default matplotlib)
 - Labels are repelled from each other but dots stay in place (no point offset)
 
----
-
 ## Dataset
 
 Any plain UTF-8 text file works. A minimum of ~50,000 characters is recommended for meaningful results -- more chunks means tighter confidence intervals.
@@ -135,8 +121,6 @@ A sample dataset is not included in this repository -- see [datasets_README.md](
 
 To build a custom dataset tailored to specific languages, tasks, or quantization use cases, see **[kld-sweep-dataset](https://github.com/cmhamiche/kld-sweep-dataset)** -- a companion tool that assembles and optionally chat-wraps evaluation and imatrix calibration datasets from the [eaddario/imatrix-calibration](https://huggingface.co/datasets/eaddario/imatrix-calibration) corpus.
 
----
-
 ## Notes
 
 - The baseline model can be in the same directory as the quants -- it will be detected and excluded automatically. Sibling shards of the baseline are also excluded.
@@ -146,8 +130,6 @@ To build a custom dataset tailored to specific languages, tasks, or quantization
 - If you change `--dataset` between runs, the script detects the mismatch and asks whether to regenerate the logits.
 - ERROR entries (crashed or unparseable runs) are retried automatically on the next run.
 - The `--quants` directory is searched recursively -- subdirectories are included.
-
----
 
 ## Troubleshooting
 
