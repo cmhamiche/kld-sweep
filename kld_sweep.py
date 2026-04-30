@@ -803,7 +803,7 @@ def main():
     baseline_resolved = baseline.resolve()
     for f in all_gguf:
         is_baseline_file = f.resolve() == baseline_resolved
-        is_baseline_shard = baseline_shard_prefix and shard_base(f.stem).lower() == baseline_shard_prefix.lower()
+        is_baseline_shard = baseline_shard_prefix and shard_base(f.stem) is not None and shard_base(f.stem).lower() == baseline_shard_prefix.lower()
         m = _RE_SHARD.search(f.stem)
         is_nonfirst_shard = m is not None and m.group(1) != "00001"
         if is_baseline_file or is_baseline_shard or is_nonfirst_shard:
