@@ -1,6 +1,6 @@
 # kld-sweep
 
-A cross-platform Python script to evaluate and compare GGUF quantizations of a model against a full-precision baseline (BF16 or F16) using KL Divergence and Perplexity, powered by [llama.cpp](https://github.com/ggerganov/llama.cpp).
+A Python script to compare GGUF quantizations of a model against a baseline (BF16 or F16) using KL Divergence and Perplexity, powered by [llama.cpp](https://github.com/ggerganov/llama.cpp).
 
 ---
 
@@ -114,34 +114,11 @@ python kld_sweep.py ^
 ```
 Quantization, Size_GiB, PPL_Score, KLD_Score, MDL_norm, Num_Tokens, KLD_99, BPW
 ```
-
-Backward compatible with older 4-column and 6-column formats -- MDL_norm is auto-computed for 4-column CSVs on load.
-
----
-
-## Split-shard GGUFs
-
-Split-shard models (e.g. `model-00001-of-00003.gguf`) are handled automatically:
-
-- Point `--baseline` to the first shard only
-- Only the first shard of each quant is passed to `llama-perplexity`
-- Non-first shards are excluded from the sweep
-- Total size is computed as the sum of all shards
-- Shard suffixes are stripped from quant names
-
----
-
-## Backfill
-
-After the sweep, any quant entries missing BPW are backfilled by running a minimal dry pass (`-c 1 -t 1`) to capture model load metadata. This is fast -- it loads the model just enough to print the BPW line, then exits.
-
 ---
 
 ## Plot styling
 
 - Uses the TOL qualitative colour palette (not default matplotlib)
-- Marker shapes are assigned per quantizer prefix (e.g. `IQ` vs `Q` vs `F` get different shapes)
-- Legend shows both colour and marker shape for each quantizer family
 - Labels are repelled from each other but dots stay in place (no point offset)
 
 ---
@@ -165,7 +142,6 @@ To build a custom dataset tailored to specific languages, tasks, or quantization
 - The baseline model can be in the same directory as the quants -- it will be detected and excluded automatically. Sibling shards of the baseline are also excluded.
 - Quantization names are extracted from GGUF metadata (`general.name`) -- the model name portion is stripped from the filename, leaving just the quant type (e.g. `IQ4_XS` instead of `Qwen3.5-0.8B-IQ4_XS`). Falls back to the full filename stem if metadata is unreadable.
 - Split-shard baselines are supported -- point `--baseline` to the first shard only.
-- ik_llama.cpp returns non-zero exit codes even on success. The script parses output first and uses results if PPL/KLD were extracted successfully, regardless of exit code.
 - If logits generation is interrupted (Ctrl+C, crash), the partial file is automatically detected on the next run and the script prompts you to regenerate.
 - If you change `--dataset` between runs, the script detects the mismatch and asks whether to regenerate the logits.
 - ERROR entries (crashed or unparseable runs) are retried automatically on the next run.
